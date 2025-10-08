@@ -2,18 +2,18 @@
   "name": "real-estate-crm",
   "version": "1.0.0",
   "description": "Professional Real Estate CRM",
-  "main": "index.js",
+  "main": "server.js",
   "scripts": {
-    "start": "node index.js"
+    "start": "node server.js"
   },
   "dependencies": {
     "express": "^4.18.2",
     "sqlite3": "^5.1.6",
-    "cors": "^2.8.5",
     "bcryptjs": "^2.4.3",
+    "cors": "^2.8.5",
     "express-session": "^1.17.3"
   },
-  "keywords": ["crm", "real-estate"],
-  "author": "Your Name",
-  "license": "MIT"
+  "engines": {
+    "node": ">=14.0.0"
+  }
 }
