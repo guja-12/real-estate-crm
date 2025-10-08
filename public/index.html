@@ -772,64 +772,51 @@
         }
     }
 
-    // Authentication Functions
-    async function handleLogin(e) {
-        e.preventDefault();
-        
-        const username = document.getElementById('username').value;
-        const password = document.getElementById('password').value;
+   // Authentication Functions - SECURE VERSION
+async function handleLogin(e) {
+    e.preventDefault();
+    
+    const username = document.getElementById('username').value;
+    const password = document.getElementById('password').value;
 
-        if (!username || !password) {
-            showToast('Please enter username and password', 'error');
-            return;
-        }
-
-        const loginBtn = document.getElementById('loginBtn');
-        setLoading(loginBtn, true);
-
-        try {
-            const response = await fetch(`${API_BASE}/login`, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
-                credentials: 'include',
-                body: JSON.stringify({ username, password })
-            });
-
-            if (response.ok) {
-                const data = await response.json();
-                currentUser = data.user;
-                showToast(`Welcome back, ${currentUser.username}!`);
-                initializeDashboard();
-            } else {
-                // Fallback to demo mode
-                console.log('API login failed, using demo mode');
-                currentUser = { 
-                    id: 1, 
-                    username: username || 'demo', 
-                    email: 'demo@company.com', 
-                    role: 'admin' 
-                };
-                showToast(`Welcome to PrimeCRM Demo, ${currentUser.username}!`);
-                initializeDashboard();
-            }
-        } catch (error) {
-            console.log('Network error, using demo mode:', error);
-            // Fallback to demo mode
-            currentUser = { 
-                id: 1, 
-                username: username || 'demo', 
-                email: 'demo@company.com', 
-                role: 'admin' 
-            };
-            showToast(`Welcome to PrimeCRM Demo, ${currentUser.username}!`);
-            initializeDashboard();
-        } finally {
-            setLoading(loginBtn, false);
-        }
+    if (!username || !password) {
+        showToast('Please enter username and password', 'error');
+        return;
     }
 
+    const loginBtn = document.getElementById('loginBtn');
+    setLoading(loginBtn, true);
+
+    try {
+        const response = await fetch(`${API_BASE}/login`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            credentials: 'include',
+            body: JSON.stringify({ username, password })
+        });
+
+        if (response.ok) {
+            const data = await response.json();
+            currentUser = data.user;
+            showToast(`Welcome back, ${currentUser.username}!`);
+            initializeDashboard();
+        } else {
+            const error = await response.json();
+            showToast(error.error || 'Login failed', 'error');
+            // Clear password field on failure
+            document.getElementById('password').value = '';
+        }
+    } catch (error) {
+        showToast('Network error. Please try again.', 'error');
+        document.getElementById('password').value = '';
+    } finally {
+        setLoading(loginBtn, false);
+    }
+}
+
+// Remove ALL demo mode fallbacks from other functions
     async function handleLogout() {
         try {
             await fetch(`${API_BASE}/logout`, { 
