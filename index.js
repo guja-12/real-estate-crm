@@ -7,18 +7,32 @@ const session = require('express-session');
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// Middleware
-app.use(cors());
-app.use(express.json());
-app.use(express.static(path.join(__dirname, 'public')));
-app.use(session({
-    secret: 'your-secret-key-change-in-production',
-    resave: false,
-    saveUninitialized: false,
-    cookie: { secure: false, maxAge: 24 * 60 * 60 * 1000 } // 24 hours
+// Enhanced CORS configuration
+app.use(cors({
+    origin: ['https://my-crm-89g2.onrender.com', 'http://localhost:3000'],
+    credentials: true,
+    methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With']
 }));
 
-// Database setup
+app.options('*', cors());
+app.use(express.json());
+app.use(express.static('.'));
+
+// Enhanced session configuration
+app.use(session({
+    secret: process.env.SESSION_SECRET || 'prime-crm-secret-key-change-in-production',
+    resave: false,
+    saveUninitialized: false,
+    cookie: { 
+        secure: false,
+        httpOnly: true,
+        maxAge: 24 * 60 * 60 * 1000,
+        sameSite: 'lax'
+    }
+}));
+
+// Database setup - Using file database for persistence
 const db = new sqlite3.Database('./crm.db', (err) => {
     if (err) {
         console.error('Error opening database:', err.message);
@@ -29,48 +43,46 @@ const db = new sqlite3.Database('./crm.db', (err) => {
 });
 
 function initializeDatabase() {
-    // Drop and recreate tables to ensure clean setup
-    db.serialize(() => {
-        // Drop existing tables
-        db.run(`DROP TABLE IF EXISTS clients`);
-        db.run(`DROP TABLE IF EXISTS users`);
-        
-        // Create users table
-        db.run(`CREATE TABLE users (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            username TEXT UNIQUE NOT NULL,
-            email TEXT UNIQUE NOT NULL,
-            password TEXT NOT NULL,
-            role TEXT DEFAULT 'agent',
-            created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-        )`);
+    // Create users table
+    db.run(`CREATE TABLE IF NOT EXISTS users (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        username TEXT UNIQUE NOT NULL,
+        email TEXT UNIQUE NOT NULL,
+        password TEXT NOT NULL,
+        role TEXT DEFAULT 'agent',
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    )`);
 
-        // Create clients table
-        db.run(`CREATE TABLE clients (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            name TEXT NOT NULL,
-            email TEXT NOT NULL,
-            phone TEXT,
-            status TEXT DEFAULT 'Lead',
-            notes TEXT,
-            assigned_to INTEGER,
-            created_by INTEGER,
-            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-            FOREIGN KEY (assigned_to) REFERENCES users (id),
-            FOREIGN KEY (created_by) REFERENCES users (id)
-        )`);
+    // Create clients table
+    db.run(`CREATE TABLE IF NOT EXISTS clients (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        name TEXT NOT NULL,
+        email TEXT NOT NULL,
+        phone TEXT,
+        status TEXT DEFAULT 'Lead',
+        notes TEXT,
+        assigned_to INTEGER,
+        created_by INTEGER,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    )`);
 
-        // Create default admin user
-        const defaultPassword = bcrypt.hashSync('admin123', 10);
-        db.run(`INSERT INTO users (username, email, password, role) VALUES (?, ?, ?, ?)`, 
-            ['admin', 'admin@crm.com', defaultPassword, 'admin'], function(err) {
-                if (err) {
-                    console.log('Admin user already exists or error:', err.message);
-                } else {
-                    console.log('✅ Default admin user created: admin / admin123');
-                }
-            });
-    });
+    // Create default admin user
+    const defaultPassword = bcrypt.hashSync('admin123', 10);
+    db.run(`INSERT OR IGNORE INTO users (username, email, password, role) VALUES (?, ?, ?, ?)`, 
+        ['admin', 'admin@crm.com', defaultPassword, 'admin'], function(err) {
+            if (err) {
+                console.log('Error creating admin user:', err.message);
+            } else {
+                console.log('✅ Default admin user created: admin / admin123');
+            }
+        });
+
+    // Add demo clients
+    db.run(`INSERT OR IGNORE INTO clients (name, email, phone, status, notes, assigned_to, created_by) VALUES 
+        ('John Smith', 'john@example.com', '(555) 123-4567', 'Lead', 'Interested in downtown condo', 1, 1),
+        ('Sarah Johnson', 'sarah@example.com', '(555) 987-6543', 'Contacted', 'Looking for family home', 1, 1),
+        ('Mike Wilson', 'mike@example.com', '(555) 456-7890', 'Negotiation', 'Commercial property inquiry', 1, 1)
+    `);
 }
 
 // Authentication middleware
@@ -84,6 +96,16 @@ const requireAuth = (req, res, next) => {
 
 // Routes
 
+// Serve the main page
+app.get('/', (req, res) => {
+    res.sendFile(path.join(__dirname, 'index.html'));
+});
+
+// Health check
+app.get('/api/health', (req, res) => {
+    res.json({ status: 'OK', message: 'CRM API is running' });
+});
+
 // AUTH ROUTES
 // Register new user
 app.post('/api/register', async (req, res) => {
@@ -91,6 +113,11 @@ app.post('/api/register', async (req, res) => {
 
     if (!username || !email || !password) {
         return res.status(400).json({ error: 'All fields are required' });
+    }
+
+    // Validate password strength
+    if (password.length < 6) {
+        return res.status(400).json({ error: 'Password must be at least 6 characters' });
     }
 
     try {
@@ -113,7 +140,7 @@ app.post('/api/register', async (req, res) => {
     }
 });
 
-// Login
+// Login - STRICT AUTHENTICATION
 app.post('/api/login', (req, res) => {
     const { username, password } = req.body;
 
@@ -123,31 +150,37 @@ app.post('/api/login', (req, res) => {
 
     db.get(`SELECT * FROM users WHERE username = ? OR email = ?`, [username, username], async (err, user) => {
         if (err) {
+            console.error('Database error:', err);
             return res.status(500).json({ error: 'Database error' });
         }
 
         if (!user) {
-            return res.status(401).json({ error: 'Invalid credentials' });
+            return res.status(401).json({ error: 'Invalid username or password' });
         }
 
-        const validPassword = await bcrypt.compare(password, user.password);
-        if (!validPassword) {
-            return res.status(401).json({ error: 'Invalid credentials' });
-        }
-
-        // Create session
-        req.session.userId = user.id;
-        req.session.userRole = user.role;
-
-        res.json({
-            message: 'Login successful',
-            user: {
-                id: user.id,
-                username: user.username,
-                email: user.email,
-                role: user.role
+        try {
+            const validPassword = await bcrypt.compare(password, user.password);
+            if (!validPassword) {
+                return res.status(401).json({ error: 'Invalid username or password' });
             }
-        });
+
+            // Create session
+            req.session.userId = user.id;
+            req.session.userRole = user.role;
+
+            res.json({
+                message: 'Login successful',
+                user: {
+                    id: user.id,
+                    username: user.username,
+                    email: user.email,
+                    role: user.role
+                }
+            });
+        } catch (error) {
+            console.error('Password comparison error:', error);
+            return res.status(500).json({ error: 'Authentication error' });
+        }
     });
 });
 
@@ -176,13 +209,11 @@ app.get('/api/user', (req, res) => {
 });
 
 // CLIENT ROUTES (Protected)
-// Get all clients (now filtered by user role)
 app.get('/api/clients', requireAuth, (req, res) => {
     let query = `SELECT c.*, u.username as assigned_agent 
                  FROM clients c 
                  LEFT JOIN users u ON c.assigned_to = u.id`;
     
-    // Agents can only see their assigned clients
     if (req.session.userRole === 'agent') {
         query += ` WHERE c.assigned_to = ?`;
         db.all(query, [req.session.userId], (err, rows) => {
@@ -190,7 +221,6 @@ app.get('/api/clients', requireAuth, (req, res) => {
             res.json(rows);
         });
     } else {
-        // Admins can see all clients
         db.all(query, [], (err, rows) => {
             if (err) return res.status(500).json({ error: err.message });
             res.json(rows);
@@ -198,37 +228,41 @@ app.get('/api/clients', requireAuth, (req, res) => {
     }
 });
 
-// Create client
 app.post('/api/clients', requireAuth, (req, res) => {
     const { name, email, phone, status, notes, assigned_to } = req.body;
     
+    if (!name || !email) {
+        return res.status(400).json({ error: 'Name and email are required' });
+    }
+
     const query = `INSERT INTO clients (name, email, phone, status, notes, assigned_to, created_by) 
                    VALUES (?, ?, ?, ?, ?, ?, ?)`;
     
-    // If no assigned_to specified, assign to current user
     const assignedTo = assigned_to || req.session.userId;
     
     db.run(query, [name, email, phone, status || 'Lead', notes || '', assignedTo, req.session.userId], 
         function(err) {
             if (err) return res.status(500).json({ error: err.message });
             
-            res.json({
-                id: this.lastID,
-                name, email, phone,
-                status: status || 'Lead',
-                notes: notes || '',
-                assigned_to: assignedTo,
-                created_by: req.session.userId
+            db.get(`SELECT c.*, u.username as assigned_agent 
+                    FROM clients c 
+                    LEFT JOIN users u ON c.assigned_to = u.id 
+                    WHERE c.id = ?`, [this.lastID], (err, row) => {
+                if (err) return res.status(500).json({ error: err.message });
+                res.json(row);
             });
         }
     );
 });
 
-// Update client
 app.put('/api/clients/:id', requireAuth, (req, res) => {
     const { id } = req.params;
     const { name, email, phone, status, notes, assigned_to } = req.body;
     
+    if (!name || !email) {
+        return res.status(400).json({ error: 'Name and email are required' });
+    }
+
     const query = `UPDATE clients SET name = ?, email = ?, phone = ?, status = ?, notes = ?, assigned_to = ? WHERE id = ?`;
     
     db.run(query, [name, email, phone, status, notes, assigned_to, id], function(err) {
@@ -237,13 +271,10 @@ app.put('/api/clients/:id', requireAuth, (req, res) => {
     });
 });
 
-// Delete client
 app.delete('/api/clients/:id', requireAuth, (req, res) => {
     const { id } = req.params;
     
-    const query = `DELETE FROM clients WHERE id = ?`;
-    
-    db.run(query, [id], function(err) {
+    db.run(`DELETE FROM clients WHERE id = ?`, [id], function(err) {
         if (err) return res.status(500).json({ error: err.message });
         res.json({ message: 'Client deleted successfully' });
     });
@@ -261,21 +292,9 @@ app.get('/api/users', requireAuth, (req, res) => {
     });
 });
 
-// Serve the frontend
-app.get('/', (req, res) => {
-    res.sendFile(path.join(__dirname, 'public', 'index.html'));
-});
-
-app.get('/login', (req, res) => {
-    res.sendFile(path.join(__dirname, 'public', 'index.html'));
-});
-
-app.get('/dashboard', (req, res) => {
-    res.sendFile(path.join(__dirname, 'public', 'index.html'));
-});
-
-// Start server - SIMPLE VERSION (NO ERRORS)
+// Start server
 app.listen(PORT, () => {
-    console.log(`🚀 Professional CRM running on port ${PORT}`);
+    console.log(`🚀 Secure CRM running on port ${PORT}`);
     console.log(`📊 Default admin login: admin / admin123`);
+    console.log(`🔒 STRICT AUTHENTICATION ENABLED`);
 });
