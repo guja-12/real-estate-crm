@@ -70,15 +70,5 @@ A full-stack Customer Relationship Management system built specifically for real
 - Render (Full-stack deployment)
 - Automatic CI/CD from GitHub
 
-## 📸 Screenshots
-
-### Login Page
-![Login Page](https://via.placeholder.com/800x400/667eea/ffffff?text=Professional+Login+Page)
-
-### Dashboard
-![Dashboard](https://via.placeholder.com/800x400/764ba2/ffffff?text=Real-time+Analytics+Dashboard)
-
-### Client Management
-![Client Management](https://via.placeholder.com/800x400/2c5aa0/ffffff?text=Client+Management+Interface)
 
 ## 🏗️ Project Structure
