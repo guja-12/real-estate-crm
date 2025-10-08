@@ -19,7 +19,7 @@ app.options('*', cors());
 app.use(express.json());
 app.use(express.static('.'));
 
-// Enhanced session configuration
+// Enhanced session configuration for Render
 app.use(session({
     secret: process.env.SESSION_SECRET || 'prime-crm-secret-key-change-in-production',
     resave: false,
@@ -29,32 +29,45 @@ app.use(session({
         httpOnly: true,
         maxAge: 24 * 60 * 60 * 1000,
         sameSite: 'lax'
-    }
+    },
+    store: new (require('express-session').MemoryStore)()
 }));
 
-// Database setup - Using file database for persistence
-const db = new sqlite3.Database('./crm.db', (err) => {
+// Database setup - Use in-memory database for Render compatibility
+const db = new sqlite3.Database(':memory:', (err) => {
     if (err) {
         console.error('Error opening database:', err.message);
     } else {
-        console.log('Connected to SQLite database.');
+        console.log('Connected to SQLite in-memory database.');
         initializeDatabase();
     }
 });
 
+// Store initial data that will be recreated on server restart
+let initialDataCreated = false;
+
 function initializeDatabase() {
+    console.log('Initializing database tables...');
+    
     // Create users table
-    db.run(`CREATE TABLE IF NOT EXISTS users (
+    db.run(`CREATE TABLE users (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         username TEXT UNIQUE NOT NULL,
         email TEXT UNIQUE NOT NULL,
         password TEXT NOT NULL,
         role TEXT DEFAULT 'agent',
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-    )`);
+    )`, (err) => {
+        if (err) {
+            console.error('Error creating users table:', err.message);
+        } else {
+            console.log('✅ Users table created');
+            createDefaultUsers();
+        }
+    });
 
     // Create clients table
-    db.run(`CREATE TABLE IF NOT EXISTS clients (
+    db.run(`CREATE TABLE clients (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         name TEXT NOT NULL,
         email TEXT NOT NULL,
@@ -64,26 +77,55 @@ function initializeDatabase() {
         assigned_to INTEGER,
         created_by INTEGER,
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-    )`);
+    )`, (err) => {
+        if (err) {
+            console.error('Error creating clients table:', err.message);
+        } else {
+            console.log('✅ Clients table created');
+            createDemoClients();
+        }
+    });
+}
 
-    // Create default admin user - SECURE: Only one way to login
+function createDefaultUsers() {
     const defaultPassword = bcrypt.hashSync('admin123', 10);
-    db.run(`INSERT OR IGNORE INTO users (username, email, password, role) VALUES (?, ?, ?, ?)`, 
+    
+    db.run(`INSERT INTO users (username, email, password, role) VALUES (?, ?, ?, ?)`, 
         ['admin', 'admin@crm.com', defaultPassword, 'admin'], function(err) {
             if (err) {
-                console.log('Error creating admin user:', err.message);
+                console.log('Admin user already exists or error:', err.message);
             } else {
-                console.log('✅ SECURE: Default admin user created: admin / admin123');
-                console.log('🔒 NO DEMO MODE - Only valid users can login');
+                console.log('✅ Default admin user created: admin / admin123');
             }
         });
 
-    // Add demo clients (these are just initial data, not demo mode)
-    db.run(`INSERT OR IGNORE INTO clients (name, email, phone, status, notes, assigned_to, created_by) VALUES 
+    // Create a demo agent user
+    const agentPassword = bcrypt.hashSync('agent123', 10);
+    db.run(`INSERT INTO users (username, email, password, role) VALUES (?, ?, ?, ?)`, 
+        ['agent', 'agent@crm.com', agentPassword, 'agent'], function(err) {
+            if (err) {
+                console.log('Agent user already exists or error:', err.message);
+            } else {
+                console.log('✅ Demo agent user created: agent / agent123');
+            }
+        });
+}
+
+function createDemoClients() {
+    db.run(`INSERT INTO clients (name, email, phone, status, notes, assigned_to, created_by) VALUES 
         ('John Smith', 'john@example.com', '(555) 123-4567', 'Lead', 'Interested in downtown condo', 1, 1),
         ('Sarah Johnson', 'sarah@example.com', '(555) 987-6543', 'Contacted', 'Looking for family home', 1, 1),
-        ('Mike Wilson', 'mike@example.com', '(555) 456-7890', 'Negotiation', 'Commercial property inquiry', 1, 1)
-    `);
+        ('Mike Wilson', 'mike@example.com', '(555) 456-7890', 'Negotiation', 'Commercial property inquiry', 1, 1),
+        ('Emily Davis', 'emily@example.com', '(555) 111-2222', 'Closed', 'Purchased luxury apartment', 2, 1),
+        ('Robert Brown', 'robert@example.com', '(555) 333-4444', 'Contacted', 'First-time home buyer', 2, 1)
+    `, function(err) {
+        if (err) {
+            console.log('Demo clients already exist or error:', err.message);
+        } else {
+            console.log('✅ Demo clients created');
+            initialDataCreated = true;
+        }
+    });
 }
 
 // Authentication middleware
@@ -102,13 +144,18 @@ app.get('/', (req, res) => {
     res.sendFile(path.join(__dirname, 'index.html'));
 });
 
-// Health check
+// Health check with database status
 app.get('/api/health', (req, res) => {
-    res.json({ status: 'OK', message: 'CRM API is running', secure: true });
+    res.json({ 
+        status: 'OK', 
+        message: 'CRM API is running', 
+        secure: true,
+        database: 'SQLite in-memory',
+        dataPersists: 'Until server restart'
+    });
 });
 
 // AUTH ROUTES - STRICT AUTHENTICATION
-// Register new user
 app.post('/api/register', async (req, res) => {
     const { username, email, password, role = 'agent' } = req.body;
 
@@ -116,7 +163,6 @@ app.post('/api/register', async (req, res) => {
         return res.status(400).json({ error: 'All fields are required' });
     }
 
-    // Validate password strength
     if (password.length < 6) {
         return res.status(400).json({ error: 'Password must be at least 6 characters' });
     }
@@ -141,7 +187,7 @@ app.post('/api/register', async (req, res) => {
     }
 });
 
-// Login - STRICT AUTHENTICATION - NO DEMO MODE
+// Login - STRICT AUTHENTICATION
 app.post('/api/login', (req, res) => {
     const { username, password } = req.body;
 
@@ -165,7 +211,6 @@ app.post('/api/login', (req, res) => {
                 return res.status(401).json({ error: 'Invalid username or password' });
             }
 
-            // Create session
             req.session.userId = user.id;
             req.session.userRole = user.role;
 
@@ -185,7 +230,6 @@ app.post('/api/login', (req, res) => {
     });
 });
 
-// Logout
 app.post('/api/logout', (req, res) => {
     req.session.destroy((err) => {
         if (err) {
@@ -195,7 +239,6 @@ app.post('/api/logout', (req, res) => {
     });
 });
 
-// Get current user
 app.get('/api/user', (req, res) => {
     if (!req.session.userId) {
         return res.status(401).json({ error: 'Not authenticated' });
@@ -209,7 +252,7 @@ app.get('/api/user', (req, res) => {
     });
 });
 
-// CLIENT ROUTES (Protected)
+// CLIENT ROUTES
 app.get('/api/clients', requireAuth, (req, res) => {
     let query = `SELECT c.*, u.username as assigned_agent 
                  FROM clients c 
@@ -281,7 +324,7 @@ app.delete('/api/clients/:id', requireAuth, (req, res) => {
     });
 });
 
-// USER MANAGEMENT ROUTES (Admin only)
+// USER MANAGEMENT ROUTES
 app.get('/api/users', requireAuth, (req, res) => {
     if (req.session.userRole !== 'admin') {
         return res.status(403).json({ error: 'Admin access required' });
@@ -296,7 +339,10 @@ app.get('/api/users', requireAuth, (req, res) => {
 // Start server
 app.listen(PORT, () => {
     console.log(`🚀 SECURE CRM running on port ${PORT}`);
-    console.log(`📊 Default admin login: admin / admin123`);
+    console.log(`📊 Available logins:`);
+    console.log(`   👑 Admin: admin / admin123`);
+    console.log(`   👥 Agent: agent / agent123`);
     console.log(`🔒 STRICT AUTHENTICATION ENABLED - NO DEMO MODE`);
     console.log(`❌ Invalid credentials will be REJECTED`);
+    console.log(`💾 Database: In-memory SQLite (resets on server restart)`);
 });
