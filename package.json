@@ -11,7 +11,7 @@
     "sqlite3": "^5.1.6",
     "bcryptjs": "^2.4.3",
     "cors": "^2.8.5",
-    "express-session": "^1.17.3"
+    "jsonwebtoken": "^9.0.2"
   },
   "engines": {
     "node": ">=14.0.0"
