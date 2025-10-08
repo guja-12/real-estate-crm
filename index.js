@@ -3,11 +3,11 @@ const sqlite3 = require('sqlite3').verbose();
 const cors = require('cors');
 const path = require('path');
 const bcrypt = require('bcryptjs');
-const session = require('express-session');
+const jwt = require('jsonwebtoken');
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// Enhanced CORS configuration
+// Enhanced CORS configuration for cross-device access
 app.use(cors({
     origin: ['https://my-crm-89g2.onrender.com', 'http://localhost:3000'],
     credentials: true,
@@ -21,19 +21,8 @@ app.use(express.json());
 // Serve static files from the public directory
 app.use(express.static(path.join(__dirname, 'public')));
 
-// Enhanced session configuration for Render
-app.use(session({
-    secret: process.env.SESSION_SECRET || 'prime-crm-secret-key-change-in-production',
-    resave: false,
-    saveUninitialized: false,
-    cookie: { 
-        secure: false,
-        httpOnly: true,
-        maxAge: 24 * 60 * 60 * 1000,
-        sameSite: 'lax'
-    },
-    store: new (require('express-session').MemoryStore)()
-}));
+// JWT Secret Key
+const JWT_SECRET = process.env.JWT_SECRET || 'prime-crm-jwt-secret-key-change-in-production';
 
 // Database setup - Use in-memory database for Render compatibility
 const db = new sqlite3.Database(':memory:', (err) => {
@@ -126,12 +115,20 @@ function createDemoClients() {
     });
 }
 
-// Authentication middleware
+// JWT Authentication middleware
 const requireAuth = (req, res, next) => {
-    if (req.session.userId) {
+    const token = req.header('Authorization')?.replace('Bearer ', '');
+    
+    if (!token) {
+        return res.status(401).json({ error: 'Access denied. No token provided.' });
+    }
+
+    try {
+        const decoded = jwt.verify(token, JWT_SECRET);
+        req.user = decoded;
         next();
-    } else {
-        res.status(401).json({ error: 'Authentication required' });
+    } catch (error) {
+        res.status(401).json({ error: 'Invalid token.' });
     }
 };
 
@@ -148,12 +145,12 @@ app.get('/api/health', (req, res) => {
         status: 'OK', 
         message: 'CRM API is running', 
         secure: true,
-        database: 'SQLite in-memory',
-        dataPersists: 'Until server restart'
+        authentication: 'JWT-based',
+        crossDevice: 'Enabled'
     });
 });
 
-// AUTH ROUTES - STRICT AUTHENTICATION
+// AUTH ROUTES - JWT AUTHENTICATION
 app.post('/api/register', async (req, res) => {
     const { username, email, password, role = 'agent' } = req.body;
 
@@ -174,9 +171,18 @@ app.post('/api/register', async (req, res) => {
                 if (err) {
                     return res.status(400).json({ error: 'Username or email already exists' });
                 }
+                
+                // Generate JWT token for new user
+                const token = jwt.sign(
+                    { id: this.lastID, username, email, role },
+                    JWT_SECRET,
+                    { expiresIn: '24h' }
+                );
+                
                 res.json({ 
                     message: 'User created successfully',
-                    user: { id: this.lastID, username, email, role }
+                    user: { id: this.lastID, username, email, role },
+                    token
                 });
             }
         );
@@ -185,7 +191,7 @@ app.post('/api/register', async (req, res) => {
     }
 });
 
-// Login - STRICT AUTHENTICATION
+// Login - JWT AUTHENTICATION
 app.post('/api/login', (req, res) => {
     const { username, password } = req.body;
 
@@ -209,8 +215,17 @@ app.post('/api/login', (req, res) => {
                 return res.status(401).json({ error: 'Invalid username or password' });
             }
 
-            req.session.userId = user.id;
-            req.session.userRole = user.role;
+            // Generate JWT token
+            const token = jwt.sign(
+                { 
+                    id: user.id, 
+                    username: user.username, 
+                    email: user.email, 
+                    role: user.role 
+                },
+                JWT_SECRET,
+                { expiresIn: '24h' }
+            );
 
             res.json({
                 message: 'Login successful',
@@ -219,7 +234,8 @@ app.post('/api/login', (req, res) => {
                     username: user.username,
                     email: user.email,
                     role: user.role
-                }
+                },
+                token // Send token to client
             });
         } catch (error) {
             console.error('Password comparison error:', error);
@@ -228,21 +244,14 @@ app.post('/api/login', (req, res) => {
     });
 });
 
+// Logout - Client-side token removal
 app.post('/api/logout', (req, res) => {
-    req.session.destroy((err) => {
-        if (err) {
-            return res.status(500).json({ error: 'Logout failed' });
-        }
-        res.json({ message: 'Logout successful' });
-    });
+    res.json({ message: 'Logout successful' });
 });
 
-app.get('/api/user', (req, res) => {
-    if (!req.session.userId) {
-        return res.status(401).json({ error: 'Not authenticated' });
-    }
-
-    db.get(`SELECT id, username, email, role FROM users WHERE id = ?`, [req.session.userId], (err, user) => {
+// Get current user from token
+app.get('/api/user', requireAuth, (req, res) => {
+    db.get(`SELECT id, username, email, role FROM users WHERE id = ?`, [req.user.id], (err, user) => {
         if (err || !user) {
             return res.status(404).json({ error: 'User not found' });
         }
@@ -256,9 +265,9 @@ app.get('/api/clients', requireAuth, (req, res) => {
                  FROM clients c 
                  LEFT JOIN users u ON c.assigned_to = u.id`;
     
-    if (req.session.userRole === 'agent') {
+    if (req.user.role === 'agent') {
         query += ` WHERE c.assigned_to = ?`;
-        db.all(query, [req.session.userId], (err, rows) => {
+        db.all(query, [req.user.id], (err, rows) => {
             if (err) return res.status(500).json({ error: err.message });
             res.json(rows);
         });
@@ -280,9 +289,9 @@ app.post('/api/clients', requireAuth, (req, res) => {
     const query = `INSERT INTO clients (name, email, phone, status, notes, assigned_to, created_by) 
                    VALUES (?, ?, ?, ?, ?, ?, ?)`;
     
-    const assignedTo = assigned_to || req.session.userId;
+    const assignedTo = assigned_to || req.user.id;
     
-    db.run(query, [name, email, phone, status || 'Lead', notes || '', assignedTo, req.session.userId], 
+    db.run(query, [name, email, phone, status || 'Lead', notes || '', assignedTo, req.user.id], 
         function(err) {
             if (err) return res.status(500).json({ error: err.message });
             
@@ -324,7 +333,7 @@ app.delete('/api/clients/:id', requireAuth, (req, res) => {
 
 // USER MANAGEMENT ROUTES
 app.get('/api/users', requireAuth, (req, res) => {
-    if (req.session.userRole !== 'admin') {
+    if (req.user.role !== 'admin') {
         return res.status(403).json({ error: 'Admin access required' });
     }
     
@@ -338,6 +347,7 @@ app.get('/api/users', requireAuth, (req, res) => {
 app.listen(PORT, () => {
     console.log(`🚀 SECURE CRM running on port ${PORT}`);
     console.log(`📁 Serving files from: ${path.join(__dirname, 'public')}`);
+    console.log(`🔐 Authentication: JWT-based (works across all devices)`);
     console.log(`📊 Available logins:`);
     console.log(`   👑 Admin: admin / admin123`);
     console.log(`   👥 Agent: agent / agent123`);
