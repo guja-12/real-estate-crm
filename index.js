@@ -260,9 +260,28 @@ app.get('/api/users', requireAuth, (req, res) => {
         res.json(rows);
     });
 });
+// Serve the frontend - ADD THIS ROUTE
+app.get('/', (req, res) => {
+    res.sendFile(path.join(__dirname, 'public', 'index.html'));
+});
+
+// Serve other pages - ADD THIS TOO
+app.get('/login', (req, res) => {
+    res.sendFile(path.join(__dirname, 'public', 'index.html'));
+});
+
+app.get('/dashboard', (req, res) => {
+    res.sendFile(path.join(__dirname, 'public', 'index.html'));
+});
 
 // Start server
 app.listen(PORT, () => {
     console.log(`🚀 Professional CRM running on port ${PORT}`);
     console.log(`📊 Default admin login: admin / admin123`);
+});
+// Start server
+app.listen(PORT, () => {
+    console.log(`🚀 Professional CRM running on port ${PORT}`);
+    console.log(`📊 Default admin login: admin / admin123`);
+
 });
