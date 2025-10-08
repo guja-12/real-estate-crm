@@ -723,7 +723,7 @@
     <!-- Toast Container -->
     <div class="toast-container" id="toastContainer"></div>
 
-   <script>
+  <script>
     // State management
     let currentUser = null;
     let editingClientId = null;
@@ -731,19 +731,6 @@
 
     // API Base URL - Use your Render URL
     const API_BASE = 'https://my-crm-89g2.onrender.com/api';
-
-    // Demo data for fallback
-    let demoClients = [
-        { id: 1, name: 'John Smith', email: 'john@example.com', phone: '(555) 123-4567', status: 'Lead', assigned_agent: 'admin', created_at: new Date() },
-        { id: 2, name: 'Sarah Johnson', email: 'sarah@example.com', phone: '(555) 987-6543', status: 'Contacted', assigned_agent: 'admin', created_at: new Date() },
-        { id: 3, name: 'Mike Wilson', email: 'mike@example.com', phone: '(555) 456-7890', status: 'Negotiation', assigned_agent: 'admin', created_at: new Date() }
-    ];
-
-    let demoUsers = [
-        { id: 1, username: 'admin', email: 'admin@crm.com', role: 'admin', created_at: new Date() },
-        { id: 2, username: 'john_agent', email: 'john@company.com', role: 'agent', created_at: new Date() },
-        { id: 3, username: 'sarah_agent', email: 'sarah@company.com', role: 'agent', created_at: new Date() }
-    ];
 
     // Utility Functions
     function showToast(message, type = 'success') {
@@ -772,51 +759,49 @@
         }
     }
 
-   // Authentication Functions - SECURE VERSION
-async function handleLogin(e) {
-    e.preventDefault();
-    
-    const username = document.getElementById('username').value;
-    const password = document.getElementById('password').value;
+    // Authentication Functions
+    async function handleLogin(e) {
+        e.preventDefault();
+        
+        const username = document.getElementById('username').value;
+        const password = document.getElementById('password').value;
 
-    if (!username || !password) {
-        showToast('Please enter username and password', 'error');
-        return;
-    }
-
-    const loginBtn = document.getElementById('loginBtn');
-    setLoading(loginBtn, true);
-
-    try {
-        const response = await fetch(`${API_BASE}/login`, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-            },
-            credentials: 'include',
-            body: JSON.stringify({ username, password })
-        });
-
-        if (response.ok) {
-            const data = await response.json();
-            currentUser = data.user;
-            showToast(`Welcome back, ${currentUser.username}!`);
-            initializeDashboard();
-        } else {
-            const error = await response.json();
-            showToast(error.error || 'Login failed', 'error');
-            // Clear password field on failure
-            document.getElementById('password').value = '';
+        if (!username || !password) {
+            showToast('Please enter username and password', 'error');
+            return;
         }
-    } catch (error) {
-        showToast('Network error. Please try again.', 'error');
-        document.getElementById('password').value = '';
-    } finally {
-        setLoading(loginBtn, false);
-    }
-}
 
-// Remove ALL demo mode fallbacks from other functions
+        const loginBtn = document.getElementById('loginBtn');
+        setLoading(loginBtn, true);
+
+        try {
+            const response = await fetch(`${API_BASE}/login`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                credentials: 'include',
+                body: JSON.stringify({ username, password })
+            });
+
+            if (response.ok) {
+                const data = await response.json();
+                currentUser = data.user;
+                showToast(`Welcome back, ${currentUser.username}!`);
+                initializeDashboard();
+            } else {
+                const error = await response.json();
+                showToast(error.error || 'Login failed', 'error');
+                document.getElementById('password').value = '';
+            }
+        } catch (error) {
+            showToast('Network error. Please try again.', 'error');
+            document.getElementById('password').value = '';
+        } finally {
+            setLoading(loginBtn, false);
+        }
+    }
+
     async function handleLogout() {
         try {
             await fetch(`${API_BASE}/logout`, { 
@@ -1027,50 +1012,11 @@ async function handleLogin(e) {
                 loadClients();
                 loadDashboardData();
             } else {
-                // Fallback to demo mode
-                if (editingClientId) {
-                    // Update demo client
-                    const index = demoClients.findIndex(c => c.id === editingClientId);
-                    if (index !== -1) {
-                        demoClients[index] = { ...demoClients[index], ...formData };
-                    }
-                    showToast('Client updated successfully (Demo Mode)');
-                } else {
-                    // Add new demo client
-                    const newClient = {
-                        id: Date.now(),
-                        ...formData,
-                        assigned_agent: currentUser.username,
-                        created_at: new Date()
-                    };
-                    demoClients.push(newClient);
-                    showToast('Client added successfully (Demo Mode)');
-                }
-                closeModal(document.getElementById('clientModal'));
-                loadClients();
-                loadDashboardData();
+                const error = await response.json();
+                showToast(error.error || 'Operation failed', 'error');
             }
         } catch (error) {
-            // Fallback to demo mode
-            if (editingClientId) {
-                const index = demoClients.findIndex(c => c.id === editingClientId);
-                if (index !== -1) {
-                    demoClients[index] = { ...demoClients[index], ...formData };
-                }
-                showToast('Client updated successfully (Demo Mode)');
-            } else {
-                const newClient = {
-                    id: Date.now(),
-                    ...formData,
-                    assigned_agent: currentUser.username,
-                    created_at: new Date()
-                };
-                demoClients.push(newClient);
-                showToast('Client added successfully (Demo Mode)');
-            }
-            closeModal(document.getElementById('clientModal'));
-            loadClients();
-            loadDashboardData();
+            showToast('Network error. Please try again.', 'error');
         } finally {
             setLoading(submitBtn, false);
         }
@@ -1141,24 +1087,7 @@ async function handleLogin(e) {
                 showToast(error.error || 'Operation failed', 'error');
             }
         } catch (error) {
-            // Fallback to demo mode
-            if (editingUserId) {
-                const index = demoUsers.findIndex(u => u.id === editingUserId);
-                if (index !== -1) {
-                    demoUsers[index] = { ...demoUsers[index], ...formData };
-                }
-                showToast('User updated successfully (Demo Mode)');
-            } else {
-                const newUser = {
-                    id: Date.now(),
-                    ...formData,
-                    created_at: new Date()
-                };
-                demoUsers.push(newUser);
-                showToast('User created successfully (Demo Mode)');
-            }
-            closeModal(document.getElementById('userModal'));
-            loadUsers();
+            showToast('Network error. Please try again.', 'error');
         } finally {
             setLoading(submitBtn, false);
         }
@@ -1178,9 +1107,7 @@ async function handleLogin(e) {
                 throw new Error('Failed to load clients');
             }
         } catch (error) {
-            // Fallback to demo mode
-            console.log('Using demo clients data');
-            renderClientsTable(demoClients);
+            showToast('Failed to load clients', 'error');
         }
     }
 
@@ -1219,8 +1146,7 @@ async function handleLogin(e) {
                 throw new Error('Failed to load users');
             }
         } catch (error) {
-            // Fallback to demo users
-            renderUsersTable(demoUsers);
+            showToast('Failed to load users', 'error');
         }
     }
 
@@ -1256,9 +1182,7 @@ async function handleLogin(e) {
                 throw new Error('Failed to load dashboard data');
             }
         } catch (error) {
-            // Fallback to demo mode
-            updateDashboardStats(demoClients);
-            renderRecentClients(demoClients);
+            showToast('Failed to load dashboard data', 'error');
         }
     }
 
@@ -1313,21 +1237,14 @@ async function handleLogin(e) {
                     const row = document.querySelector(`tr[data-client-id="${clientId}"]`);
                     if (row) row.remove();
                     
-                    // Remove from demo data if exists
-                    demoClients = demoClients.filter(c => c.id !== clientId);
-                    
                     // Reload data to ensure consistency
                     loadDashboardData();
                 } else {
-                    throw new Error('Failed to delete client');
+                    const error = await response.json();
+                    showToast(error.error || 'Failed to delete client', 'error');
                 }
             } catch (error) {
-                // Fallback to demo mode
-                demoClients = demoClients.filter(c => c.id !== clientId);
-                const row = document.querySelector(`tr[data-client-id="${clientId}"]`);
-                if (row) row.remove();
-                showToast('Client deleted successfully (Demo Mode)');
-                loadDashboardData();
+                showToast('Network error. Please try again.', 'error');
             }
         }
     };
@@ -1342,11 +1259,8 @@ async function handleLogin(e) {
             try {
                 // You'll need to add this endpoint to your backend
                 showToast('User deletion not implemented in backend yet', 'warning');
-                // For now, just remove from UI in demo mode
-                demoUsers = demoUsers.filter(u => u.id !== userId);
-                const row = document.querySelector(`tr[data-user-id="${userId}"]`);
-                if (row) row.remove();
-                showToast('User deleted successfully (Demo Mode)');
+                // For now, just show message
+                showToast('User deletion requires backend implementation', 'warning');
             } catch (error) {
                 showToast('Failed to delete user', 'error');
             }
