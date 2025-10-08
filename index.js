@@ -17,7 +17,9 @@ app.use(cors({
 
 app.options('*', cors());
 app.use(express.json());
-app.use(express.static('.'));
+
+// Serve static files from the current directory
+app.use(express.static(__dirname));
 
 // Enhanced session configuration for Render
 app.use(session({
@@ -42,9 +44,6 @@ const db = new sqlite3.Database(':memory:', (err) => {
         initializeDatabase();
     }
 });
-
-// Store initial data that will be recreated on server restart
-let initialDataCreated = false;
 
 function initializeDatabase() {
     console.log('Initializing database tables...');
@@ -123,7 +122,6 @@ function createDemoClients() {
             console.log('Demo clients already exist or error:', err.message);
         } else {
             console.log('✅ Demo clients created');
-            initialDataCreated = true;
         }
     });
 }
@@ -139,7 +137,7 @@ const requireAuth = (req, res, next) => {
 
 // Routes
 
-// Serve the main page
+// Serve the main page - FIXED PATH
 app.get('/', (req, res) => {
     res.sendFile(path.join(__dirname, 'index.html'));
 });
