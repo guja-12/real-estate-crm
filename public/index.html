@@ -685,7 +685,41 @@
             </div>
         </div>
     </div>
-
+<!-- User Modal -->
+<div class="modal" id="userModal">
+    <div class="modal-content">
+        <div class="modal-header">
+            <h3 id="userModalTitle">Add User</h3>
+            <button class="modal-close" id="closeUserModal">&times;</button>
+        </div>
+        <div class="modal-body">
+            <form id="userForm">
+                <div class="form-group">
+                    <label for="userUsername">Username *</label>
+                    <input type="text" id="userUsername" class="form-control" required>
+                </div>
+                <div class="form-group">
+                    <label for="userEmail">Email Address *</label>
+                    <input type="email" id="userEmail" class="form-control" required>
+                </div>
+                <div class="form-group">
+                    <label for="userPassword">Password *</label>
+                    <input type="password" id="userPassword" class="form-control" required>
+                </div>
+                <div class="form-group">
+                    <label for="userRole">Role</label>
+                    <select id="userRole" class="form-control">
+                        <option value="agent">Agent</option>
+                        <option value="admin">Administrator</option>
+                    </select>
+                </div>
+                <button type="submit" class="btn btn-primary" style="width: 100%;">
+                    Save User
+                </button>
+            </form>
+        </div>
+    </div>
+</div>
     <!-- Toast Container -->
     <div class="toast-container" id="toastContainer"></div>
 
