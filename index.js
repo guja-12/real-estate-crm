@@ -274,14 +274,20 @@ app.get('/dashboard', (req, res) => {
     res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
 
-// Start server
+// Start server with error handling
 app.listen(PORT, () => {
     console.log(`🚀 Professional CRM running on port ${PORT}`);
     console.log(`📊 Default admin login: admin / admin123`);
+}).on('error', (err) => {
+    if (err.code === 'EADDRINUSE') {
+        console.log(`Port ${PORT} is busy, trying port ${Number(PORT) + 1}`);
+        app.listen(Number(PORT) + 1, () => {
+            console.log(`🚀 Professional CRM running on port ${Number(PORT) + 1}`);
+        });
+    } else {
+        console.error('Server error:', err);
+    }
 });
-// Start server
-app.listen(PORT, () => {
-    console.log(`🚀 Professional CRM running on port ${PORT}`);
-    console.log(`📊 Default admin login: admin / admin123`);
 
 });
+
