@@ -18,8 +18,8 @@ app.use(cors({
 app.options('*', cors());
 app.use(express.json());
 
-// Serve static files from the current directory
-app.use(express.static(__dirname));
+// Serve static files from the public directory
+app.use(express.static(path.join(__dirname, 'public')));
 
 // Enhanced session configuration for Render
 app.use(session({
@@ -137,9 +137,9 @@ const requireAuth = (req, res, next) => {
 
 // Routes
 
-// Serve the main page - FIXED PATH
+// Serve the main page from public folder
 app.get('/', (req, res) => {
-    res.sendFile(path.join(__dirname, 'index.html'));
+    res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
 
 // Health check with database status
@@ -337,6 +337,7 @@ app.get('/api/users', requireAuth, (req, res) => {
 // Start server
 app.listen(PORT, () => {
     console.log(`🚀 SECURE CRM running on port ${PORT}`);
+    console.log(`📁 Serving files from: ${path.join(__dirname, 'public')}`);
     console.log(`📊 Available logins:`);
     console.log(`   👑 Admin: admin / admin123`);
     console.log(`   👥 Agent: agent / agent123`);
