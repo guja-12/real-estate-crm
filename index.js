@@ -66,18 +66,19 @@ function initializeDatabase() {
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP
     )`);
 
-    // Create default admin user
+    // Create default admin user - SECURE: Only one way to login
     const defaultPassword = bcrypt.hashSync('admin123', 10);
     db.run(`INSERT OR IGNORE INTO users (username, email, password, role) VALUES (?, ?, ?, ?)`, 
         ['admin', 'admin@crm.com', defaultPassword, 'admin'], function(err) {
             if (err) {
                 console.log('Error creating admin user:', err.message);
             } else {
-                console.log('✅ Default admin user created: admin / admin123');
+                console.log('✅ SECURE: Default admin user created: admin / admin123');
+                console.log('🔒 NO DEMO MODE - Only valid users can login');
             }
         });
 
-    // Add demo clients
+    // Add demo clients (these are just initial data, not demo mode)
     db.run(`INSERT OR IGNORE INTO clients (name, email, phone, status, notes, assigned_to, created_by) VALUES 
         ('John Smith', 'john@example.com', '(555) 123-4567', 'Lead', 'Interested in downtown condo', 1, 1),
         ('Sarah Johnson', 'sarah@example.com', '(555) 987-6543', 'Contacted', 'Looking for family home', 1, 1),
@@ -103,10 +104,10 @@ app.get('/', (req, res) => {
 
 // Health check
 app.get('/api/health', (req, res) => {
-    res.json({ status: 'OK', message: 'CRM API is running' });
+    res.json({ status: 'OK', message: 'CRM API is running', secure: true });
 });
 
-// AUTH ROUTES
+// AUTH ROUTES - STRICT AUTHENTICATION
 // Register new user
 app.post('/api/register', async (req, res) => {
     const { username, email, password, role = 'agent' } = req.body;
@@ -140,7 +141,7 @@ app.post('/api/register', async (req, res) => {
     }
 });
 
-// Login - STRICT AUTHENTICATION
+// Login - STRICT AUTHENTICATION - NO DEMO MODE
 app.post('/api/login', (req, res) => {
     const { username, password } = req.body;
 
@@ -294,7 +295,8 @@ app.get('/api/users', requireAuth, (req, res) => {
 
 // Start server
 app.listen(PORT, () => {
-    console.log(`🚀 Secure CRM running on port ${PORT}`);
+    console.log(`🚀 SECURE CRM running on port ${PORT}`);
     console.log(`📊 Default admin login: admin / admin123`);
-    console.log(`🔒 STRICT AUTHENTICATION ENABLED`);
+    console.log(`🔒 STRICT AUTHENTICATION ENABLED - NO DEMO MODE`);
+    console.log(`❌ Invalid credentials will be REJECTED`);
 });
