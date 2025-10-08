@@ -694,8 +694,8 @@
     let currentUser = null;
     let editingClientId = null;
 
-    // API Base URL
-    const API_BASE = 'http://localhost:3000/api';
+    // API Base URL - Use your Render URL
+    const API_BASE = 'https://my-crm-89g2.onrender.com/api';
 
     // Utility Functions
     function showToast(message, type = 'success') {
@@ -724,10 +724,16 @@
         }
     }
 
+    // Demo data for fallback
+    let demoClients = [
+        { id: 1, name: 'John Smith', email: 'john@example.com', phone: '(555) 123-4567', status: 'Lead', assigned_agent: 'admin', created_at: new Date() },
+        { id: 2, name: 'Sarah Johnson', email: 'sarah@example.com', phone: '(555) 987-6543', status: 'Contacted', assigned_agent: 'admin', created_at: new Date() },
+        { id: 3, name: 'Mike Wilson', email: 'mike@example.com', phone: '(555) 456-7890', status: 'Negotiation', assigned_agent: 'admin', created_at: new Date() }
+    ];
+
     // Authentication Functions
     async function handleLogin(e) {
         e.preventDefault();
-        console.log('Login button clicked!');
         
         const username = document.getElementById('username').value;
         const password = document.getElementById('password').value;
@@ -741,12 +747,12 @@
         setLoading(loginBtn, true);
 
         try {
-            // Try real login first
             const response = await fetch(`${API_BASE}/login`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
                 },
+                credentials: 'include',
                 body: JSON.stringify({ username, password })
             });
 
@@ -754,24 +760,32 @@
                 const data = await response.json();
                 currentUser = data.user;
                 showToast(`Welcome back, ${currentUser.username}!`);
+                initializeDashboard();
             } else {
-                // If login fails, use demo mode
-                throw new Error('Login failed, using demo mode');
+                // Fallback to demo mode
+                console.log('API login failed, using demo mode');
+                currentUser = { 
+                    id: 1, 
+                    username: username || 'demo', 
+                    email: 'demo@company.com', 
+                    role: 'admin' 
+                };
+                showToast(`Welcome to PrimeCRM Demo, ${currentUser.username}!`);
+                initializeDashboard();
             }
-            
         } catch (error) {
+            console.log('Network error, using demo mode:', error);
             // Fallback to demo mode
-            console.log('Using demo mode:', error.message);
             currentUser = { 
                 id: 1, 
                 username: username || 'demo', 
                 email: 'demo@company.com', 
                 role: 'admin' 
             };
-            showToast(`Welcome to PrimeCRM, ${currentUser.username}!`);
+            showToast(`Welcome to PrimeCRM Demo, ${currentUser.username}!`);
+            initializeDashboard();
         } finally {
             setLoading(loginBtn, false);
-            initializeDashboard();
         }
     }
 
@@ -779,12 +793,10 @@
         try {
             await fetch(`${API_BASE}/logout`, { 
                 method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                }
+                credentials: 'include'
             });
         } catch (error) {
-            // Ignore logout errors in demo
+            // Ignore logout errors
         } finally {
             currentUser = null;
             document.getElementById('authContainer').style.display = 'flex';
@@ -795,8 +807,6 @@
 
     // Dashboard Functions
     function initializeDashboard() {
-        console.log('Initializing dashboard...');
-        
         // Update UI with user info
         const userAvatar = document.getElementById('userAvatar');
         const userName = document.getElementById('userName');
@@ -812,6 +822,12 @@
             usersNav.style.display = 'flex';
         }
 
+        // Show add client button
+        const addClientBtn = document.getElementById('addClientBtn');
+        if (addClientBtn) {
+            addClientBtn.style.display = 'inline-flex';
+        }
+
         // Switch to dashboard
         document.getElementById('authContainer').style.display = 'none';
         document.getElementById('dashboard').classList.add('active');
@@ -822,8 +838,6 @@
     }
 
     function setupEventListeners() {
-        console.log('Setting up event listeners...');
-        
         // Navigation
         document.querySelectorAll('.nav-item').forEach(item => {
             item.addEventListener('click', (e) => {
@@ -941,88 +955,85 @@
         setLoading(submitBtn, true);
 
         try {
-            // Try real API first
+            let response;
             if (editingClientId) {
-                await fetch(`${API_BASE}/clients/${editingClientId}`, {
+                response = await fetch(`${API_BASE}/clients/${editingClientId}`, {
                     method: 'PUT',
                     headers: { 'Content-Type': 'application/json' },
+                    credentials: 'include',
                     body: JSON.stringify(formData)
                 });
-                showToast('Client updated successfully');
             } else {
-                await fetch(`${API_BASE}/clients`, {
+                response = await fetch(`${API_BASE}/clients`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
+                    credentials: 'include',
                     body: JSON.stringify(formData)
                 });
-                showToast('Client added successfully');
+            }
+
+            if (response.ok) {
+                showToast(editingClientId ? 'Client updated successfully' : 'Client added successfully');
+                closeModal(document.getElementById('clientModal'));
+                loadClients();
+                loadDashboardData();
+            } else {
+                // Fallback to demo mode
+                if (editingClientId) {
+                    // Update demo client
+                    const index = demoClients.findIndex(c => c.id === editingClientId);
+                    if (index !== -1) {
+                        demoClients[index] = { ...demoClients[index], ...formData };
+                    }
+                    showToast('Client updated successfully (Demo Mode)');
+                } else {
+                    // Add new demo client
+                    const newClient = {
+                        id: Date.now(),
+                        ...formData,
+                        assigned_agent: currentUser.username,
+                        created_at: new Date()
+                    };
+                    demoClients.push(newClient);
+                    showToast('Client added successfully (Demo Mode)');
+                }
+                closeModal(document.getElementById('clientModal'));
+                loadClients();
+                loadDashboardData();
             }
         } catch (error) {
             // Fallback to demo mode
-            showToast(editingClientId ? 'Client updated successfully' : 'Client added successfully');
-            
-            // Add to UI directly for demo
-            if (!editingClientId) {
-                addDemoClientToTable(formData);
+            if (editingClientId) {
+                const index = demoClients.findIndex(c => c.id === editingClientId);
+                if (index !== -1) {
+                    demoClients[index] = { ...demoClients[index], ...formData };
+                }
+                showToast('Client updated successfully (Demo Mode)');
+            } else {
+                const newClient = {
+                    id: Date.now(),
+                    ...formData,
+                    assigned_agent: currentUser.username,
+                    created_at: new Date()
+                };
+                demoClients.push(newClient);
+                showToast('Client added successfully (Demo Mode)');
             }
-        } finally {
-            setLoading(submitBtn, false);
             closeModal(document.getElementById('clientModal'));
             loadClients();
             loadDashboardData();
+        } finally {
+            setLoading(submitBtn, false);
         }
     }
-
-    function addDemoClientToTable(clientData) {
-        const tbody = document.getElementById('clientsTable') || document.getElementById('recentClientsTable');
-        if (!tbody) return;
-
-        const row = document.createElement('tr');
-        const clientId = Date.now();
-        row.innerHTML = `
-            <td>${clientData.name}</td>
-            <td>${clientData.email}</td>
-            <td>${clientData.phone || 'N/A'}</td>
-            <td><span class="status-badge status-${clientData.status.toLowerCase()}">${clientData.status}</span></td>
-            <td>${currentUser.username}</td>
-            <td>Just now</td>
-            <td>
-                <button class="btn btn-warning" onclick="editDemoClient(${clientId})">Edit</button>
-                <button class="btn btn-danger" onclick="deleteDemoClient(${clientId})">Delete</button>
-            </td>
-        `;
-        tbody.appendChild(row);
-    }
-
-    // Global functions for buttons
-    window.editDemoClient = function(clientId) {
-        showToast('Edit functionality ready!', 'success');
-    };
-
-    window.deleteDemoClient = function(clientId) {
-        if (confirm('Are you sure you want to delete this client?')) {
-            showToast('Client deleted successfully');
-            // In a real app, we would remove from DOM here
-        }
-    };
-
-    window.deleteClient = async function(clientId) {
-        if (confirm('Are you sure you want to delete this client?')) {
-            try {
-                await fetch(`${API_BASE}/clients/${clientId}`, { method: 'DELETE' });
-                showToast('Client deleted successfully');
-                loadClients();
-                loadDashboardData();
-            } catch (error) {
-                showToast('Client deleted successfully');
-            }
-        }
-    };
 
     // Data loading functions
     async function loadClients() {
         try {
-            const response = await fetch(`${API_BASE}/clients`);
+            const response = await fetch(`${API_BASE}/clients`, {
+                credentials: 'include'
+            });
+            
             if (response.ok) {
                 const clients = await response.json();
                 renderClientsTable(clients);
@@ -1030,7 +1041,9 @@
                 throw new Error('Failed to load clients');
             }
         } catch (error) {
-            showDemoClients();
+            // Fallback to demo mode
+            console.log('Using demo clients data');
+            renderClientsTable(demoClients);
         }
     }
 
@@ -1039,7 +1052,7 @@
         if (!tbody) return;
 
         tbody.innerHTML = clients.map(client => `
-            <tr>
+            <tr data-client-id="${client.id}">
                 <td>${client.name}</td>
                 <td>${client.email}</td>
                 <td>${client.phone || 'N/A'}</td>
@@ -1054,18 +1067,12 @@
         `).join('');
     }
 
-    function showDemoClients() {
-        const demoClients = [
-            { id: 1, name: 'John Smith', email: 'john@example.com', phone: '(555) 123-4567', status: 'Lead', assigned_agent: 'admin', created_at: new Date() },
-            { id: 2, name: 'Sarah Johnson', email: 'sarah@example.com', phone: '(555) 987-6543', status: 'Contacted', assigned_agent: 'admin', created_at: new Date() },
-            { id: 3, name: 'Mike Wilson', email: 'mike@example.com', phone: '(555) 456-7890', status: 'Negotiation', assigned_agent: 'admin', created_at: new Date() }
-        ];
-        renderClientsTable(demoClients);
-    }
-
     async function loadDashboardData() {
         try {
-            const response = await fetch(`${API_BASE}/clients`);
+            const response = await fetch(`${API_BASE}/clients`, {
+                credentials: 'include'
+            });
+            
             if (response.ok) {
                 const clients = await response.json();
                 updateDashboardStats(clients);
@@ -1074,12 +1081,9 @@
                 throw new Error('Failed to load dashboard data');
             }
         } catch (error) {
-            const demoClients = [
-                { status: 'Lead' }, { status: 'Lead' }, { status: 'Contacted' },
-                { status: 'Negotiation' }, { status: 'Closed' }
-            ];
+            // Fallback to demo mode
             updateDashboardStats(demoClients);
-            showDemoClients();
+            renderRecentClients(demoClients);
         }
     }
 
@@ -1106,7 +1110,7 @@
 
         const recentClients = clients.slice(0, 5);
         tbody.innerHTML = recentClients.map(client => `
-            <tr>
+            <tr data-client-id="${client.id}">
                 <td>${client.name}</td>
                 <td>${client.email}</td>
                 <td>${client.phone || 'N/A'}</td>
@@ -1118,6 +1122,40 @@
             </tr>
         `).join('');
     }
+
+    // Global functions for buttons
+    window.deleteClient = async function(clientId) {
+        if (confirm('Are you sure you want to delete this client?')) {
+            try {
+                const response = await fetch(`${API_BASE}/clients/${clientId}`, { 
+                    method: 'DELETE',
+                    credentials: 'include'
+                });
+                
+                if (response.ok) {
+                    showToast('Client deleted successfully');
+                    // Remove from DOM immediately
+                    const row = document.querySelector(`tr[data-client-id="${clientId}"]`);
+                    if (row) row.remove();
+                    
+                    // Remove from demo data if exists
+                    demoClients = demoClients.filter(c => c.id !== clientId);
+                    
+                    // Reload data to ensure consistency
+                    loadDashboardData();
+                } else {
+                    throw new Error('Failed to delete client');
+                }
+            } catch (error) {
+                // Fallback to demo mode
+                demoClients = demoClients.filter(c => c.id !== clientId);
+                const row = document.querySelector(`tr[data-client-id="${clientId}"]`);
+                if (row) row.remove();
+                showToast('Client deleted successfully (Demo Mode)');
+                loadDashboardData();
+            }
+        }
+    };
 
     // Initialize the application
     document.addEventListener('DOMContentLoaded', function() {
