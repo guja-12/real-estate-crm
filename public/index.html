@@ -759,49 +759,132 @@
         }
     }
 
-    // Authentication Functions
-    async function handleLogin(e) {
-        e.preventDefault();
-        
-        const username = document.getElementById('username').value;
-        const password = document.getElementById('password').value;
+   // Authentication Functions - JWT VERSION
+async function handleLogin(e) {
+    e.preventDefault();
+    
+    const username = document.getElementById('username').value;
+    const password = document.getElementById('password').value;
 
-        if (!username || !password) {
-            showToast('Please enter username and password', 'error');
-            return;
-        }
-
-        const loginBtn = document.getElementById('loginBtn');
-        setLoading(loginBtn, true);
-
-        try {
-            const response = await fetch(`${API_BASE}/login`, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
-                credentials: 'include',
-                body: JSON.stringify({ username, password })
-            });
-
-            if (response.ok) {
-                const data = await response.json();
-                currentUser = data.user;
-                showToast(`Welcome back, ${currentUser.username}!`);
-                initializeDashboard();
-            } else {
-                const error = await response.json();
-                showToast(error.error || 'Login failed', 'error');
-                document.getElementById('password').value = '';
-            }
-        } catch (error) {
-            showToast('Network error. Please try again.', 'error');
-            document.getElementById('password').value = '';
-        } finally {
-            setLoading(loginBtn, false);
-        }
+    if (!username || !password) {
+        showToast('Please enter username and password', 'error');
+        return;
     }
 
+    const loginBtn = document.getElementById('loginBtn');
+    setLoading(loginBtn, true);
+
+    try {
+        const response = await fetch(`${API_BASE}/login`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ username, password })
+        });
+
+        if (response.ok) {
+            const data = await response.json();
+            currentUser = data.user;
+            
+            // Store JWT token in localStorage
+            if (data.token) {
+                localStorage.setItem('crm_token', data.token);
+            }
+            
+            showToast(`Welcome back, ${currentUser.username}!`);
+            initializeDashboard();
+        } else {
+            const error = await response.json();
+            showToast(error.error || 'Login failed', 'error');
+            document.getElementById('password').value = '';
+        }
+    } catch (error) {
+        showToast('Network error. Please try again.', 'error');
+        document.getElementById('password').value = '';
+    } finally {
+        setLoading(loginBtn, false);
+    }
+}
+
+// Add this function to check for existing token on page load
+function checkExistingAuth() {
+    const token = localStorage.getItem('crm_token');
+    if (token) {
+        // Verify token is still valid by calling /api/user
+        fetch(`${API_BASE}/user`, {
+            headers: {
+                'Authorization': `Bearer ${token}`
+            }
+        })
+        .then(response => {
+            if (response.ok) {
+                return response.json();
+            } else {
+                localStorage.removeItem('crm_token');
+                return null;
+            }
+        })
+        .then(data => {
+            if (data && data.user) {
+                currentUser = data.user;
+                initializeDashboard();
+            }
+        })
+        .catch(() => {
+            localStorage.removeItem('crm_token');
+        });
+    }
+}
+
+// Update all fetch calls to include the token
+async function makeAuthenticatedRequest(url, options = {}) {
+    const token = localStorage.getItem('crm_token');
+    options.headers = {
+        ...options.headers,
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'application/json'
+    };
+    
+    const response = await fetch(url, options);
+    if (response.status === 401) {
+        // Token expired or invalid
+        localStorage.removeItem('crm_token');
+        currentUser = null;
+        document.getElementById('authContainer').style.display = 'flex';
+        document.getElementById('dashboard').classList.remove('active');
+        showToast('Session expired. Please login again.', 'error');
+        throw new Error('Authentication required');
+    }
+    return response;
+}
+
+// Update your existing fetch calls to use makeAuthenticatedRequest
+// For example in loadClients():
+async function loadClients() {
+    try {
+        const response = await makeAuthenticatedRequest(`${API_BASE}/clients`);
+        if (response.ok) {
+            const clients = await response.json();
+            renderClientsTable(clients);
+        } else {
+            throw new Error('Failed to load clients');
+        }
+    } catch (error) {
+        showToast('Failed to load clients', 'error');
+    }
+}
+
+// Call this when the page loads
+document.addEventListener('DOMContentLoaded', function() {
+    console.log('🚀 PrimeCRM Professional Edition Loaded');
+    checkExistingAuth(); // Check if user is already logged in
+    
+    const loginForm = document.getElementById('loginForm');
+    if (loginForm) {
+        loginForm.addEventListener('submit', handleLogin);
+    }
+});
     async function handleLogout() {
         try {
             await fetch(`${API_BASE}/logout`, { 
