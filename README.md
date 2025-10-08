@@ -71,4 +71,3 @@ A full-stack Customer Relationship Management system built specifically for real
 - Automatic CI/CD from GitHub
 
 
-## 🏗️ Project Structure
